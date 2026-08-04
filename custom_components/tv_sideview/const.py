@@ -15,7 +15,8 @@ DEFAULT_APP_PORT = 50202
 DEFAULT_DMR_PORT = 52323
 DEFAULT_IRCC_PORT = 50001
 
-SCAN_INTERVAL = timedelta(seconds=30)
+# Poll more often so on/off and volume feel responsive in the UI
+SCAN_INTERVAL = timedelta(seconds=15)
 
 COMMANDS = [
     "Num0",

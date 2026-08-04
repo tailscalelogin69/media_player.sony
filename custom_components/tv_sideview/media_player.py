@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.components.media_player import (
@@ -17,7 +18,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import CONF_MAC, DOMAIN
 from .coordinator import SideViewDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,20 +60,35 @@ class SideViewMediaPlayer(
         self, coordinator: SideViewDataUpdateCoordinator, entry: ConfigEntry
     ) -> None:
         super().__init__(coordinator)
+        self._entry = entry
         host = entry.data[CONF_HOST]
         self._attr_unique_id = f"tv_sideview_{host}_media_player"
-        mac = coordinator.device.mac or coordinator.data.get("mac")
+        mac = (
+            entry.data.get(CONF_MAC)
+            or coordinator.device.mac
+            or (coordinator.data or {}).get("mac")
+        )
         identifiers = {(DOMAIN, mac)} if mac else {(DOMAIN, host)}
         self._attr_device_info = DeviceInfo(
             identifiers=identifiers,
             name=entry.data.get(CONF_NAME, coordinator.device.nickname),
             manufacturer="Sony",
-            model="Video & TV SideView",
+            model="BDV / SideView",
             connections={("mac", mac)} if mac else set(),
         )
+        # Ensure WOL has a MAC when the user set one in the config entry
+        if mac and not coordinator.device.mac:
+            coordinator.device.mac = mac
+
+    @property
+    def available(self) -> bool:
+        # Always show the entity; state reflects reachability
+        return True
 
     @property
     def state(self) -> MediaPlayerState | None:
+        if not self.coordinator.data:
+            return None
         raw = self.coordinator.data.get("state")
         if raw is None:
             return None
@@ -86,14 +102,51 @@ class SideViewMediaPlayer(
 
     @property
     def volume_level(self) -> float | None:
+        if not self.coordinator.data:
+            return None
         return self.coordinator.data.get("volume_level")
 
+    def _power_on_blocking(self) -> None:
+        """Wake via WOL (if MAC known) then IRCC Power, matching sonyapilib.power(True)."""
+        device = self.coordinator.device
+        mac = self._entry.data.get(CONF_MAC) or device.mac
+        if mac:
+            device.mac = mac
+            try:
+                device.wakeonlan()
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("WOL failed: %s", err)
+            # Extra magic packets help some BDV units
+            try:
+                import wakeonlan
+
+                for _ in range(3):
+                    wakeonlan.send_magic_packet(mac.replace(":", "-"))
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Extra WOL failed: %s", err)
+
+        # IRCC Power toggles on many units when already partly awake
+        try:
+            device._send_command("Power")  # noqa: SLF001
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Power command failed: %s", err)
+            try:
+                device.power(True)
+            except Exception as err2:  # noqa: BLE001
+                _LOGGER.debug("device.power(True) failed: %s", err2)
+
     async def async_turn_on(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.power, True)
-        await self.coordinator.async_request_refresh()
+        await self.hass.async_add_executor_job(self._power_on_blocking)
+        # Give the BDV time to come out of standby, then refresh state
+        for _ in range(6):
+            await asyncio.sleep(2)
+            await self.coordinator.async_request_refresh()
+            if self.coordinator.data and self.coordinator.data.get("state") != "off":
+                break
 
     async def async_turn_off(self) -> None:
         await self.hass.async_add_executor_job(self.coordinator.device.power, False)
+        await asyncio.sleep(2)
         await self.coordinator.async_request_refresh()
 
     async def async_media_play(self) -> None:
@@ -124,12 +177,13 @@ class SideViewMediaPlayer(
 
     async def async_set_volume_level(self, volume: float) -> None:
         await self.hass.async_add_executor_job(
-            self.coordinator.device.set_volume, int(volume * 100)
+            self.coordinator.device.set_volume, int(round(volume * 100))
         )
         await self.coordinator.async_request_refresh()
 
     async def async_mute_volume(self, mute: bool) -> None:
         await self.hass.async_add_executor_job(self.coordinator.device.mute)
+        await self.coordinator.async_request_refresh()
 
     @callback
     def _handle_coordinator_update(self) -> None:
