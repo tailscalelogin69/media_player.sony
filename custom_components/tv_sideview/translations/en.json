@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Video & TV SideView (Legacy API)",
+        "description": "Control older Sony TVs, Blu-ray players, and home theatre systems that work with the Video & TV SideView app.\n\nEnter the device IP. It must be powered on and on the same subnet as Home Assistant. Leave ports at defaults unless your model needs different ones.\n\nThis does not replace official Sony Bravia, PlayStation, or Songpal integrations.",
+        "data": {
+          "host": "IP address",
+          "name": "Name",
+          "app_port": "App port",
+          "dmr_port": "DMR port",
+          "ircc_port": "IRCC port"
+        }
+      },
+      "pin": {
+        "title": "Enter PIN",
+        "description": "A PIN should now be displayed on {host}. Enter it below. If nothing appears, power-cycle the device and try again.",
+        "data": {
+          "pin": "PIN code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect. Check IP, power, same subnet, and ports.",
+      "invalid_auth": "Invalid PIN. Check the code on the device and try again.",
+      "unknown": "Unexpected error. Check the logs."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "title": "Video & TV SideView (Legacy API)"
+}
