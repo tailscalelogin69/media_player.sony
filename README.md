@@ -1,75 +1,97 @@
-# Video & TV SideView (Legacy API) for Home Assistant
+# Video & TV SideView (Legacy API)
 
-Control **older Sony TVs, Blu-ray players, and home theatre systems** that work with the classic **[Video & TV SideView](https://info.tvsideview.sony.net/en_ww/)** app — over local HTTP / IRCC on your LAN.
+Home Assistant integration for **older Sony TVs, Blu-ray players, and home theatre systems** that work with the classic **[Video & TV SideView](https://info.tvsideview.sony.net/en_ww/)** app — local HTTP / IRCC control on your LAN.
 
 | | |
 |--|--|
 | **Domain** | `tv_sideview` |
 | **UI name** | Video & TV SideView (Legacy API) |
 | **Folder** | `custom_components/tv_sideview/` |
-| **HACS** | Custom repository (this repo) |
 
-Search in **Add integration** for: **SideView**, **Video**, or **TV SideView**.  
-This does **not** hide official Sony Bravia, PlayStation Network, Songpal, or other integrations.
+Search **Add integration** for **SideView**, **Video**, or **TV SideView**.  
+Does **not** replace or hide official Sony Bravia, PlayStation Network, Songpal, or other integrations.
 
 ---
 
-## Important — same subnet required
+## Important
 
 The device must be on the **same subnet** as Home Assistant (Sony firmware limitation).
 
 ---
 
-## What this is for
+## Compatibility
 
-| Use this | Use official HA instead |
-|----------|-------------------------|
+| Use this integration | Use official HA instead |
+|----------------------|-------------------------|
 | Blu-ray (BDP / UBP …) | **Sony Bravia TV** — Android / Google TV |
 | Home theatre (**BDV-E4100**, BDV-Nxxx …) | **Songpal** — newer audio products |
 | Older TVs that only speak SideView | **PlayStation Network** / console integrations |
 
-If the SideView phone app can control it on your LAN, this integration almost certainly can too.
-
----
-
-## Clean install (required if you tried earlier versions)
-
-Earlier builds used domains `sony` / `sony_sideview` and HACS sometimes installed into a broken path like `custom_components/sony/_sideview/`. That will **not** load.
-
-On the HA host:
-
-```bash
-# Remove ALL old copies
-rm -rf /config/custom_components/sony
-rm -rf /config/custom_components/sony_sideview
-rm -rf /config/custom_components/tv_sideview
-```
-
-In **HACS → Integrations**: remove any old “Sony” / “SideView” entry for this repo entirely.
-
-Then:
-
-1. HACS → Integrations → ⋮ → **Custom repositories**  
-   URL: `https://github.com/tailscalelogin69/media_player.sony`  
-   Category: **Integration**
-2. Download **Video & TV SideView (Legacy API)** (v1.2.0+)
-3. Confirm the folder is exactly:
-   ```text
-   /config/custom_components/tv_sideview/manifest.json
-   ```
-   (not `sony/`, not `sony/_sideview/`)
-4. **Restart** Home Assistant
-5. Settings → Devices & services → **Add integration** → search **`SideView`**
+If the SideView phone app can control the device on your LAN, this integration almost certainly can too.
 
 ---
 
 ## Features
 
-- Config flow + PIN pairing (no YAML)
-- `media_player` — power, transport, volume
-- `remote` — IRCC commands (`Eject`, `Power`, `Input`, …)
-- Local polling only
-- Brand icons in `brand/` (HA 2026.3+ local brands; optional CDN later)
+- Config flow with PIN pairing (no YAML)
+- **Media player** — power, play / pause / stop, next / previous, volume
+- **Remote** — IRCC commands (`Eject`, `Power`, `Input`, digits, colours, …)
+- Local polling only (no cloud)
+- HACS custom repository support
+
+Modern rewrite of the classic `media_player.sony` projects ([dilruacs](https://github.com/dilruacs/media_player.sony) / [alexmohr](https://github.com/alexmohr/media_player.sony)), updated for current Home Assistant standards (config entries, async I/O, coordinator, device registry).
+
+---
+
+## Requirements
+
+- Home Assistant **2024.1** or newer
+- Device and Home Assistant on the **same subnet**
+- Device **powered on** for initial pairing
+- Network control / Remote Start enabled on the device
+
+---
+
+## Installation
+
+### HACS (recommended)
+
+1. HACS → **Integrations** → ⋮ → **Custom repositories**
+2. Repository: `https://github.com/tailscalelogin69/media_player.sony`  
+   Category: **Integration**
+3. Download **Video & TV SideView (Legacy API)**
+4. Restart Home Assistant
+5. Settings → Devices & services → **Add integration** → search **SideView**
+
+### Manual
+
+```bash
+cd /tmp
+curl -sL -o sideview.zip \
+  "https://github.com/tailscalelogin69/media_player.sony/archive/refs/tags/v1.0.0.zip"
+unzip -q sideview.zip
+cp -a media_player.sony-1.0.0/custom_components/tv_sideview \
+  /config/custom_components/
+```
+
+Restart Home Assistant, then add the integration from the UI.
+
+Confirm the path is:
+
+```text
+/config/custom_components/tv_sideview/manifest.json
+```
+
+---
+
+## Pairing
+
+1. Power the device **on**.
+2. Add the integration and enter its IP (static IP / DHCP reservation recommended).
+3. Leave ports at defaults unless your model needs different ones (see below).
+4. Enter the **PIN** shown on the device.
+
+If no PIN appears, power-cycle the unit and retry.
 
 ---
 
@@ -83,11 +105,34 @@ Then:
 
 | Device | App | DMR | IRCC |
 |--------|-----|-----|------|
-| BDP-S590 | 52323 | 50202 | 52323 |
+| BDP-S590 | `52323` | `50202` | `52323` |
 
 ---
 
-## Example: BDV-E4100
+## Entities
+
+| Platform | Purpose |
+|----------|---------|
+| `media_player` | Power, transport, volume |
+| `remote` | Arbitrary IRCC commands |
+
+### Remote commands
+
+```yaml
+action: remote.send_command
+target:
+  entity_id: remote.your_device_remote
+data:
+  command: Eject
+```
+
+Common commands: `Power`, `Eject`, `Play`, `Pause`, `Stop`, `Rewind`, `Forward`, `Next`, `Prev`, `Up`, `Down`, `Left`, `Right`, `Confirm`, `Return`, `Home`, `Options`, `Display`, `TopMenu`, `PopUpMenu`, `Red`, `Green`, `Yellow`, `Blue`, `Num0`–`Num9`, `Audio`, `SubTitle`, `Input`, `TvInput`, `Media`, `VolumeUp`, `VolumeDown`, `Mute`.
+
+Availability depends on the device.
+
+---
+
+## Example: BDV-E4100 — power on + analog RCA input
 
 ```yaml
 sequence:
@@ -101,20 +146,32 @@ sequence:
     data:
       command: Input
   - action: remote.send_command
+    target:
+      entity_id: remote.bdv_e4100_remote
     data:
       command: Eject
 ```
 
+Try `Input`, `TvInput`, or `Media` until the rear L/R RCA input is selected.
+
 ---
 
-## Changes from upstream (dilruacs / alexmohr)
+## Troubleshooting
 
-- Config flow instead of YAML + Configurator
-- `MediaPlayerEntityFeature`, async executor I/O, `DataUpdateCoordinator`
-- Device registry, translations, HACS
-- Domain **`tv_sideview`** so it does not collide with official Sony entries
-- Combined media player + remote from both upstream lines
-- Still uses `sonyapilib==0.5.0` for the SideView protocol
+| Symptom | What to try |
+|---------|-------------|
+| Cannot connect | Same subnet? Powered on? Correct IP / ports? |
+| No PIN | Power-cycle; enable Remote Start / network control |
+| Invalid PIN | Codes expire — restart the setup flow |
+| Commands do nothing | Wrong ports for model; command not supported |
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.tv_sideview: debug
+    sonyapilib: debug
+```
 
 ---
 
@@ -122,7 +179,7 @@ sequence:
 
 - [dilruacs/media_player.sony](https://github.com/dilruacs/media_player.sony), [alexmohr/media_player.sony](https://github.com/alexmohr/media_player.sony)
 - [alexmohr/sonyapilib](https://github.com/alexmohr/sonyapilib)
-- SideView product info: [info.tvsideview.sony.net](https://info.tvsideview.sony.net/en_ww/)
+- [Video & TV SideView](https://info.tvsideview.sony.net/en_ww/)
 
 ## License
 
