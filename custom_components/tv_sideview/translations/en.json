@@ -3,10 +3,11 @@
     "step": {
       "user": {
         "title": "Video & TV SideView (Legacy API)",
-        "description": "Control older Sony TVs, Blu-ray players, and home theatre systems that work with the Video & TV SideView app.\n\nEnter the device IP. It must be powered on and on the same subnet as Home Assistant. Leave ports at defaults unless your model needs different ones.\n\nThis does not replace official Sony Bravia, PlayStation, or Songpal integrations.",
+        "description": "Control older Sony TVs, Blu-ray players, and home theatre systems that work with the Video & TV SideView app.\n\nEnter the device IP. It must be powered on and on the same subnet as Home Assistant. Leave ports at defaults unless your model needs different ones.\n\nMAC is optional at this step — used for Wake-on-LAN (power on from standby). Leave blank to auto-detect after pairing, or enter AA:BB:CC:DD:EE:FF.\n\nThis does not replace official Sony Bravia, PlayStation, or Songpal integrations.",
         "data": {
           "host": "IP address",
           "name": "Name",
+          "mac": "MAC address (optional, for power on / WOL)",
           "app_port": "App port",
           "dmr_port": "DMR port",
           "ircc_port": "IRCC port"
@@ -14,19 +15,44 @@
       },
       "pin": {
         "title": "Enter PIN",
-        "description": "A PIN should now be displayed on {host}. Enter it below. If nothing appears, power-cycle the device and try again.",
+        "description": "A PIN should now be displayed on {host}. Enter it below. If nothing appears, enable Media Remote Device Registration on the device, power-cycle, and try again.",
         "data": {
           "pin": "PIN code"
+        }
+      },
+      "mac": {
+        "title": "MAC address (Wake-on-LAN)",
+        "description": "Device at {host}: MAC {hint}.\n\nPower-on from standby needs a MAC for magic packets. Enter it now or leave blank (turn-on may not work until set under Configure).",
+        "data": {
+          "mac": "MAC address (AA:BB:CC:DD:EE:FF)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Could not connect. Check IP, power, same subnet, and ports.",
+      "cannot_connect": "Could not connect. Check IP, power, same subnet, ports, and that Media Remote registration is enabled on the device.",
       "invalid_auth": "Invalid PIN. Check the code on the device and try again.",
+      "invalid_mac": "Invalid MAC. Use format AA:BB:CC:DD:EE:FF",
       "unknown": "Unexpected error. Check the logs."
     },
     "abort": {
       "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SideView options",
+        "description": "Update MAC (for power on) and ports without re-pairing.",
+        "data": {
+          "mac": "MAC address (AA:BB:CC:DD:EE:FF)",
+          "app_port": "App port",
+          "dmr_port": "DMR port",
+          "ircc_port": "IRCC port"
+        }
+      }
+    },
+    "error": {
+      "invalid_mac": "Invalid MAC. Use format AA:BB:CC:DD:EE:FF"
     }
   },
   "title": "Video & TV SideView (Legacy API)"

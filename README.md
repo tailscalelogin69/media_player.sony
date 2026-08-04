@@ -7,15 +7,18 @@ Home Assistant integration for **older Sony TVs, Blu-ray players, and home theat
 | **Domain** | `tv_sideview` |
 | **UI name** | Video & TV SideView (Legacy API) |
 | **Folder** | `custom_components/tv_sideview/` |
+| **Version** | 1.1.0 |
 
 Search **Add integration** for **SideView**, **Video**, or **TV SideView**.  
 Does **not** replace or hide official Sony Bravia, PlayStation Network, Songpal, or other integrations.
+
+Modern rewrite of [alexmohr/media_player.sony](https://github.com/alexmohr/media_player.sony) and [dilruacs/media_player.sony](https://github.com/dilruacs/media_player.sony) for current Home Assistant (config flow, async I/O, coordinator, device registry, HACS).
 
 ---
 
 ## Important
 
-The device must be on the **same subnet** as Home Assistant (Sony firmware limitation).
+The device must be on the **same subnet** as Home Assistant. This is a **Sony firmware limitation** — the unit will not respond correctly if HA is on another subnet/VLAN without routing tricks that still appear as the same L2/L3 path Sony expects.
 
 ---
 
@@ -29,17 +32,19 @@ The device must be on the **same subnet** as Home Assistant (Sony firmware limit
 
 If the SideView phone app can control the device on your LAN, this integration almost certainly can too.
 
+Confirmed working class of hardware includes many BDP Blu-ray players and BDV home theatre systems listed in the original sonyapilib / media_player.sony projects.
+
 ---
 
 ## Features
 
-- Config flow with PIN pairing (no YAML)
-- **Media player** — power, play / pause / stop, next / previous, volume
+- Config flow + PIN pairing (no YAML)
+- Optional **MAC** at setup (auto-detected when the device reports it, or manual) for **Wake-on-LAN** power-on
+- Options flow: change MAC / ports without re-pairing
+- **Media player** — power, transport, volume; status via DMR + library polling
 - **Remote** — IRCC commands (`Eject`, `Power`, `Input`, digits, colours, …)
-- Local polling only (no cloud)
+- Brand icon under `brand/icon.png` (HA 2026.3+ local brands)
 - HACS custom repository support
-
-Modern rewrite of the classic `media_player.sony` projects ([dilruacs](https://github.com/dilruacs/media_player.sony) / [alexmohr](https://github.com/alexmohr/media_player.sony)), updated for current Home Assistant standards (config entries, async I/O, coordinator, device registry).
 
 ---
 
@@ -48,7 +53,8 @@ Modern rewrite of the classic `media_player.sony` projects ([dilruacs](https://g
 - Home Assistant **2024.1** or newer
 - Device and Home Assistant on the **same subnet**
 - Device **powered on** for initial pairing
-- Network control / Remote Start enabled on the device
+- **Media Remote Device Registration** / network remote control enabled on the device
+- For power-on from standby: **MAC address** + network standby / Remote Start if the model offers it
 
 ---
 
@@ -68,15 +74,13 @@ Modern rewrite of the classic `media_player.sony` projects ([dilruacs](https://g
 ```bash
 cd /tmp
 curl -sL -o sideview.zip \
-  "https://github.com/tailscalelogin69/media_player.sony/archive/refs/tags/v1.0.0.zip"
+  "https://github.com/tailscalelogin69/media_player.sony/archive/refs/tags/v1.1.0.zip"
 unzip -q sideview.zip
-cp -a media_player.sony-1.0.0/custom_components/tv_sideview \
+cp -a media_player.sony-1.1.0/custom_components/tv_sideview \
   /config/custom_components/
 ```
 
-Restart Home Assistant, then add the integration from the UI.
-
-Confirm the path is:
+Path must be:
 
 ```text
 /config/custom_components/tv_sideview/manifest.json
@@ -86,26 +90,42 @@ Confirm the path is:
 
 ## Pairing
 
-1. Power the device **on**.
-2. Add the integration and enter its IP (static IP / DHCP reservation recommended).
-3. Leave ports at defaults unless your model needs different ones (see below).
-4. Enter the **PIN** shown on the device.
+1. Power the device **on** (menu visible on the TV for BDV/BDP).
+2. On many 2011–2013 units: **Setup → Network Settings → Media Remote Device Registration** and start registration.
+3. In HA, add the integration:
+   - **IP** (static / DHCP reservation recommended)
+   - **Name**
+   - **MAC** (optional) — `AA:BB:CC:DD:EE:FF` for power-on; leave blank to auto-detect after pair
+   - Ports — leave defaults unless your model differs
+4. Enter a dummy PIN if asked first, then the **PIN shown on the TV/device** when prompted.
 
-If no PIN appears, power-cycle the unit and retry.
+If no PIN appears: power-cycle, confirm Media Remote registration is enabled, retry.
+
+After pairing, if MAC was not detected you get an optional MAC step (or set it later under **Configure** on the integration).
 
 ---
 
-## Ports
+## Configuration variables
 
-| Setting | Default |
-|---------|---------|
-| App | `50202` |
-| DMR | `52323` |
-| IRCC | `50001` |
+| Key | Required | Description |
+|-----|----------|-------------|
+| `host` | yes | IP or hostname |
+| `name` | no | Friendly name |
+| `mac` | no | MAC for Wake-on-LAN (`AA:BB:CC:DD:EE:FF`) |
+| `app_port` | no | Default `50202` |
+| `dmr_port` | no | Default `52323` |
+| `ircc_port` | no | Default `50001` |
+
+### Devices with non-default ports
+
+This list is incomplete — open a PR if you find others.
 
 | Device | App | DMR | IRCC |
 |--------|-----|-----|------|
 | BDP-S590 | `52323` | `50202` | `52323` |
+| BDV-E4100 (typical) | `50202` | `52323` | `50001` |
+
+Action list is often on **50002** (discovered automatically from `Ircc.xml`).
 
 ---
 
@@ -113,7 +133,7 @@ If no PIN appears, power-cycle the unit and retry.
 
 | Platform | Purpose |
 |----------|---------|
-| `media_player` | Power, transport, volume |
+| `media_player` | Power, transport, volume, state polling |
 | `remote` | Arbitrary IRCC commands |
 
 ### Remote commands
@@ -126,33 +146,79 @@ data:
   command: Eject
 ```
 
-Common commands: `Power`, `Eject`, `Play`, `Pause`, `Stop`, `Rewind`, `Forward`, `Next`, `Prev`, `Up`, `Down`, `Left`, `Right`, `Confirm`, `Return`, `Home`, `Options`, `Display`, `TopMenu`, `PopUpMenu`, `Red`, `Green`, `Yellow`, `Blue`, `Num0`–`Num9`, `Audio`, `SubTitle`, `Input`, `TvInput`, `Media`, `VolumeUp`, `VolumeDown`, `Mute`.
+| Command | Description |
+|---------|-------------|
+| Num0–Num9 | Digits |
+| Power | Power |
+| Eject | Eject |
+| Stop / Pause / Play | Transport |
+| Rewind / Forward | Seek |
+| Next / Prev | Chapter |
+| Up / Down / Left / Right / Confirm | Navigation |
+| Return / Home / Options / Display | Menus |
+| TopMenu / PopUpMenu | Disc menus |
+| Red / Green / Yellow / Blue | Colour keys |
+| Audio / SubTitle / Angle | Playback options |
+| Netflix / Karaoke / Mode3D | Apps / modes |
+| Input / TvInput / Media | Input switching (model-dependent) |
+| VolumeUp / VolumeDown / Mute | Volume (also on media_player) |
+| Advance / Replay / Favorites | Misc |
 
 Availability depends on the device.
 
 ---
 
-## Example: BDV-E4100 — power on + analog RCA input
+## Power on / off and status
+
+| Action | Behaviour |
+|--------|-----------|
+| **Turn off** | IRCC Power / library power off |
+| **Turn on** | Wake-on-LAN (needs **MAC**) + Power IRCC, then poll until reachable |
+| **State** | DMR HTTP probe + library power/playback (poll ~15s) |
+| **Volume** | RenderingControl when the unit is awake |
+
+Without a MAC, power-**off** and commands still work while the unit is awake; power-**on** from deep standby usually will not.
+
+Find MAC: device network menu, router DHCP list, or `ip neigh show <ip>` while the unit is on.
+
+---
+
+## Example scripts
+
+### BDV — power on, switch input, volume 27
 
 ```yaml
+alias: BDV audio at 27
 sequence:
   - action: media_player.turn_on
     target:
-      entity_id: media_player.bdv_e4100
-  - delay: "00:00:03"
+      entity_id: media_player.bluray
+  - delay: "00:00:08"
   - action: remote.send_command
     target:
-      entity_id: remote.bdv_e4100_remote
+      entity_id: remote.bluray_remote
     data:
       command: Input
-  - action: remote.send_command
+  - delay: "00:00:02"
+  - action: media_player.volume_set
     target:
-      entity_id: remote.bdv_e4100_remote
+      entity_id: media_player.bluray
     data:
-      command: Eject
+      volume_level: 0.27
+mode: single
 ```
 
-Try `Input`, `TvInput`, or `Media` until the rear L/R RCA input is selected.
+Try `Input`, `TvInput`, or `Media` until the rear analog RCA input is selected.
+
+### Test IRCC with Eject
+
+```yaml
+action: remote.send_command
+target:
+  entity_id: remote.bluray_remote
+data:
+  command: Eject
+```
 
 ---
 
@@ -160,14 +226,16 @@ Try `Input`, `TvInput`, or `Media` until the rear L/R RCA input is selected.
 
 | Symptom | What to try |
 |---------|-------------|
-| Cannot connect | Same subnet? Powered on? Correct IP / ports? |
-| No PIN | Power-cycle; enable Remote Start / network control |
-| Invalid PIN | Codes expire — restart the setup flow |
+| Cannot connect | Same subnet? On? Correct IP/ports? Media Remote registration enabled? |
+| No PIN | Power-cycle; open registration menu on device |
+| Invalid PIN | Codes expire — restart setup |
+| Commands work, status wrong | Update to ≥1.1.0 (DMR probe); wait one poll cycle |
+| Can turn off but not on | Set **MAC** under Configure; enable network standby |
 | Commands do nothing | Wrong ports for model; command not supported |
 
 ```yaml
 logger:
-  default: info
+  default: warning
   logs:
     custom_components.tv_sideview: debug
     sonyapilib: debug

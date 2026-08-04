@@ -61,6 +61,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"Unable to connect to SideView device at {host}: {err}"
         ) from err
 
+    # Keep MAC on the device object for WOL even if library did not discover it
+    if mac:
+        device.mac = mac
+    elif device.mac and not entry.data.get(CONF_MAC):
+        # Persist auto-discovered MAC for future power-on
+        new_data = {**entry.data, CONF_MAC: device.mac}
+        hass.config_entries.async_update_entry(entry, data=new_data)
+
     coordinator = SideViewDataUpdateCoordinator(hass, device)
     await coordinator.async_config_entry_first_refresh()
 
