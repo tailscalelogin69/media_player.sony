@@ -1,0 +1,12 @@
+{
+  "domain": "sony_sideview",
+  "name": "Sony SideView (Legacy API)",
+  "codeowners": ["@tailscalelogin69"],
+  "config_flow": true,
+  "documentation": "https://github.com/tailscalelogin69/media_player.sony",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/tailscalelogin69/media_player.sony/issues",
+  "requirements": ["sonyapilib==0.5.0"],
+  "version": "1.1.0"
+}
