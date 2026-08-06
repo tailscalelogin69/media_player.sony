@@ -7,7 +7,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from sonyapilib.device import AuthenticationResult, SonyDevice
 
 from .const import (
@@ -30,7 +30,11 @@ PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER, Platform.REMOTE]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Video & TV SideView from a config entry."""
+    """Set up Video & TV SideView from a config entry.
+
+    The device is often powered off at HA restart. Setup must still succeed so
+    entities exist (state defaults to off) and update when the unit is reachable.
+    """
     host = entry.data[CONF_HOST]
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
     pin = entry.data.get(CONF_PIN)
@@ -52,25 +56,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if mac:
         device.mac = mac
 
+    # Soft init: offline is normal — do not raise ConfigEntryNotReady
     try:
-        await hass.async_add_executor_job(_ensure_authenticated, device, pin)
+        await hass.async_add_executor_job(_try_init_device, device, pin)
     except ConfigEntryAuthFailed:
         raise
-    except Exception as err:
-        raise ConfigEntryNotReady(
-            f"Unable to connect to SideView device at {host}: {err}"
-        ) from err
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning(
+            "SideView device at %s is offline or not ready at setup (%s); "
+            "entities will show off until it is reachable",
+            host,
+            err,
+        )
 
-    # Keep MAC on the device object for WOL even if library did not discover it
     if mac:
         device.mac = mac
     elif device.mac and not entry.data.get(CONF_MAC):
-        # Persist auto-discovered MAC for future power-on
-        new_data = {**entry.data, CONF_MAC: device.mac}
-        hass.config_entries.async_update_entry(entry, data=new_data)
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_MAC: device.mac}
+        )
 
     coordinator = SideViewDataUpdateCoordinator(hass, device)
-    await coordinator.async_config_entry_first_refresh()
+    # Soft first refresh — offline must not block entity registration
+    await coordinator.async_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     logging.getLogger("sonyapilib").setLevel(logging.WARNING)
@@ -80,16 +88,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-def _ensure_authenticated(device: SonyDevice, pin: str | None) -> None:
-    """Run blocking auth / init on the executor."""
+def _try_init_device(device: SonyDevice, pin: str | None) -> None:
+    """Init when online. Re-register only if no stored PIN (first-time style)."""
     if not pin or pin in ("0000", ""):
         result = device.register()
         if result == AuthenticationResult.PIN_NEEDED:
             raise ConfigEntryAuthFailed("PIN required — reconfigure the integration")
         if result != AuthenticationResult.SUCCESS:
             raise ConfigEntryAuthFailed("Registration failed")
-    else:
-        device.init_device()
+        return
+
+    device.init_device()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

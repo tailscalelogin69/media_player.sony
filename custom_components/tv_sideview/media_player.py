@@ -76,29 +76,28 @@ class SideViewMediaPlayer(
             model="BDV / SideView",
             connections={("mac", mac)} if mac else set(),
         )
-        # Ensure WOL has a MAC when the user set one in the config entry
         if mac and not coordinator.device.mac:
             coordinator.device.mac = mac
 
     @property
     def available(self) -> bool:
-        # Always show the entity; state reflects reachability
+        # Always provided by the integration — off when device is unreachable
         return True
 
     @property
-    def state(self) -> MediaPlayerState | None:
+    def state(self) -> MediaPlayerState:
         if not self.coordinator.data:
-            return None
+            return MediaPlayerState.OFF
         raw = self.coordinator.data.get("state")
         if raw is None:
-            return None
+            return MediaPlayerState.OFF
         mapping = {
             "on": MediaPlayerState.ON,
             "off": MediaPlayerState.OFF,
             "playing": MediaPlayerState.PLAYING,
             "paused": MediaPlayerState.PAUSED,
         }
-        return mapping.get(str(raw), MediaPlayerState.ON if raw else MediaPlayerState.OFF)
+        return mapping.get(str(raw), MediaPlayerState.OFF)
 
     @property
     def volume_level(self) -> float | None:
@@ -107,7 +106,7 @@ class SideViewMediaPlayer(
         return self.coordinator.data.get("volume_level")
 
     def _power_on_blocking(self) -> None:
-        """Wake via WOL (if MAC known) then IRCC Power, matching sonyapilib.power(True)."""
+        """Wake via WOL (if MAC known) then IRCC Power."""
         device = self.coordinator.device
         mac = self._entry.data.get(CONF_MAC) or device.mac
         if mac:
@@ -116,7 +115,6 @@ class SideViewMediaPlayer(
                 device.wakeonlan()
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("WOL failed: %s", err)
-            # Extra magic packets help some BDV units
             try:
                 import wakeonlan
 
@@ -125,7 +123,6 @@ class SideViewMediaPlayer(
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("Extra WOL failed: %s", err)
 
-        # IRCC Power toggles on many units when already partly awake
         try:
             device._send_command("Power")  # noqa: SLF001
         except Exception as err:  # noqa: BLE001
@@ -137,7 +134,6 @@ class SideViewMediaPlayer(
 
     async def async_turn_on(self) -> None:
         await self.hass.async_add_executor_job(self._power_on_blocking)
-        # Give the BDV time to come out of standby, then refresh state
         for _ in range(6):
             await asyncio.sleep(2)
             await self.coordinator.async_request_refresh()
