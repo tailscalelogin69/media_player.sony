@@ -231,32 +231,6 @@ There is **no** direct IRCC for “jump to AUDIO (RCA)”. Use `BDV:Function` wi
 
 ## Example scripts
 
-### BDV-E4100 — power on, AUDIO (RCA), volume 27
-
-```yaml
-alias: BDV — on, AUDIO, vol 27
-mode: single
-sequence:
-  - action: media_player.turn_on
-    target:
-      entity_id: media_player.bluray
-  - delay: "00:00:12"
-  - repeat:
-      count: 1   # measure: presses of BDV:Function from cold power-on to AUDIO
-      sequence:
-        - action: remote.send_command
-          target:
-            entity_id: remote.bluray_remote
-          data:
-            command: BDV:Function
-        - delay: "00:00:01"
-  - action: media_player.volume_set
-    target:
-      entity_id: media_player.bluray
-    data:
-      volume_level: 0.27
-```
-
 ### Test tray
 
 ```yaml
