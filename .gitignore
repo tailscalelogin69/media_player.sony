@@ -1,7 +1,7 @@
 pylintrc
 home-assistant.log
 home-assistant_v2.db
-test_config/custom_components
-test_config/.storage/auth
-
 .idea/
+
+# Never commit a live Home Assistant config dump
+test_config/
