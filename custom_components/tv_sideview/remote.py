@@ -23,6 +23,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import COMMANDS, CONF_MAC, DOMAIN
 from .coordinator import SideViewDataUpdateCoordinator
+from .ircc import profile_names, send_command
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,20 +77,28 @@ class SideViewRemote(CoordinatorEntity[SideViewDataUpdateCoordinator], RemoteEnt
 
     @property
     def activity_list(self) -> list[str]:
-        cmds = (
-            list(self.coordinator.device.commands.keys())
-            if self.coordinator.device.commands
-            else COMMANDS
-        )
-        return sorted(cmds)
+        names = set(COMMANDS)
+        names.update(profile_names(self.coordinator.resolved_profile()))
+        if getattr(self.coordinator.device, "api_version", 1) != 0:
+            names.update(self.coordinator.device.commands or {})
+        return sorted(names)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.power, True)
+        await self.hass.async_add_executor_job(self._send, "Power")
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.power, False)
+        await self.hass.async_add_executor_job(self._send, "Power")
         await self.coordinator.async_request_refresh()
+
+    def _send(self, cmd: str) -> None:
+        device = self.coordinator.device
+        if send_command(device, cmd, self.coordinator.resolved_profile()):
+            return
+        try:
+            device._send_command(cmd)  # noqa: SLF001
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Command %s was not accepted: %s", cmd, err)
 
     async def async_send_command(self, command: Iterable[str], **kwargs: Any) -> None:
         repeats = kwargs.get(ATTR_NUM_REPEATS, DEFAULT_NUM_REPEATS)
@@ -98,9 +107,7 @@ class SideViewRemote(CoordinatorEntity[SideViewDataUpdateCoordinator], RemoteEnt
         for _ in range(repeats):
             for cmd in command:
                 _LOGGER.debug("Sending IRCC command: %s", cmd)
-                await self.hass.async_add_executor_job(
-                    self.coordinator.device._send_command, cmd  # noqa: SLF001
-                )
+                await self.hass.async_add_executor_job(self._send, cmd)
                 if delay:
                     await asyncio.sleep(delay)
 

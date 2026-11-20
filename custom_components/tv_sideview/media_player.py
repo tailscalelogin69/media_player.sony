@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
+import time
 
 from homeassistant.components.media_player import (
     MediaPlayerDeviceClass,
@@ -20,6 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_MAC, DOMAIN
 from .coordinator import SideViewDataUpdateCoordinator
+from .ircc import send_command, wol_wait_seconds
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,70 +108,96 @@ class SideViewMediaPlayer(
             return None
         return self.coordinator.data.get("volume_level")
 
+    def _port_open(self, port: int | None) -> bool:
+        if not port:
+            return False
+        try:
+            with socket.create_connection((self.coordinator.device.host, port), timeout=2):
+                return True
+        except OSError:
+            return False
+
+    def _send(self, name: str) -> bool:
+        device = self.coordinator.device
+        if send_command(device, name, self.coordinator.resolved_profile()):
+            return True
+        try:
+            device._send_command(name)  # noqa: SLF001
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Fallback command %s failed: %s", name, err)
+            return False
+
     def _power_on_blocking(self) -> None:
-        """Wake via WOL (if MAC known) then IRCC Power."""
+        """Wake the NIC, wait for the stack, then send Power.
+
+        The SideView app waits up to 120s (40s only for a Blu-ray recorder)
+        for the unit to reappear after the magic packet. Firing Power before the
+        IRCC port is open is why turn-on used to no-op. The wait ends as soon
+        as IRCC or DMR answers.
+        """
         device = self.coordinator.device
         mac = self._entry.data.get(CONF_MAC) or device.mac
         if mac:
             device.mac = mac
             try:
-                device.wakeonlan()
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("WOL failed: %s", err)
-            try:
                 import wakeonlan
 
                 for _ in range(3):
                     wakeonlan.send_magic_packet(mac.replace(":", "-"))
+                    time.sleep(0.2)
             except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Extra WOL failed: %s", err)
+                _LOGGER.debug("WOL failed: %s", err)
 
-        try:
-            device._send_command("Power")  # noqa: SLF001
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Power command failed: %s", err)
+        deadline = time.time() + wol_wait_seconds(self.coordinator.resolved_profile())
+        while time.time() < deadline:
+            if self._port_open(device.ircc_port) or self._port_open(device.dmr_port):
+                break
+            time.sleep(2)
+
+        if not self._send("Power"):
             try:
                 device.power(True)
-            except Exception as err2:  # noqa: BLE001
-                _LOGGER.debug("device.power(True) failed: %s", err2)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("device.power(True) failed: %s", err)
 
     async def async_turn_on(self) -> None:
         await self.hass.async_add_executor_job(self._power_on_blocking)
-        for _ in range(6):
+        for _ in range(8):
             await asyncio.sleep(2)
             await self.coordinator.async_request_refresh()
             if self.coordinator.data and self.coordinator.data.get("state") != "off":
                 break
 
     async def async_turn_off(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.power, False)
+        await self.hass.async_add_executor_job(self._send, "Power")
         await asyncio.sleep(2)
         await self.coordinator.async_request_refresh()
 
     async def async_media_play(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.play)
+        await self.hass.async_add_executor_job(self._send, "Play")
         await self.coordinator.async_request_refresh()
 
     async def async_media_pause(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.pause)
+        await self.hass.async_add_executor_job(self._send, "Pause")
         await self.coordinator.async_request_refresh()
 
     async def async_media_stop(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.stop)
+        await self.hass.async_add_executor_job(self._send, "Stop")
         await self.coordinator.async_request_refresh()
 
     async def async_media_next_track(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.next)
+        await self.hass.async_add_executor_job(self._send, "Next")
 
     async def async_media_previous_track(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.prev)
+        await self.hass.async_add_executor_job(self._send, "Prev")
 
     async def async_volume_up(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.volume_up)
+        await self.hass.async_add_executor_job(self._send, "VolumeUp")
         await self.coordinator.async_request_refresh()
 
     async def async_volume_down(self) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.volume_down)
+        await self.hass.async_add_executor_job(self._send, "VolumeDown")
         await self.coordinator.async_request_refresh()
 
     async def async_set_volume_level(self, volume: float) -> None:
@@ -178,7 +207,7 @@ class SideViewMediaPlayer(
         await self.coordinator.async_request_refresh()
 
     async def async_mute_volume(self, mute: bool) -> None:
-        await self.hass.async_add_executor_job(self.coordinator.device.mute)
+        await self.hass.async_add_executor_job(self._send, "Mute")
         await self.coordinator.async_request_refresh()
 
     @callback

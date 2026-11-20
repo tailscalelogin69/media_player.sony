@@ -13,20 +13,28 @@ from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 from sonyapilib.device import AuthenticationResult, SonyDevice
 
 from .const import (
     CONF_APP_PORT,
     CONF_DMR_PORT,
     CONF_IRCC_PORT,
+    CONF_IRCC_PROFILE,
     CONF_MAC,
     CONF_PIN,
     DEFAULT_APP_PORT,
     DEFAULT_DMR_PORT,
     DEFAULT_IRCC_PORT,
+    DEFAULT_IRCC_PROFILE,
     DEFAULT_NAME,
     DOMAIN,
 )
+from .ircc import PROFILE_LABELS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -244,6 +252,7 @@ class TVSideViewConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_IRCC_PORT: self._ircc_port,
             CONF_PIN: self._pin,
             CONF_MAC: self._mac or self._device.mac,
+            CONF_IRCC_PROFILE: DEFAULT_IRCC_PROFILE,
         }
         return self.async_create_entry(title=self._name, data=data)
 
@@ -299,6 +308,9 @@ class TVSideViewOptionsFlow(config_entries.OptionsFlow):
                 data[CONF_IRCC_PORT] = user_input.get(
                     CONF_IRCC_PORT, data.get(CONF_IRCC_PORT, DEFAULT_IRCC_PORT)
                 )
+                data[CONF_IRCC_PROFILE] = user_input.get(
+                    CONF_IRCC_PROFILE, data.get(CONF_IRCC_PROFILE, DEFAULT_IRCC_PROFILE)
+                )
                 self.hass.config_entries.async_update_entry(self._entry, data=data)
                 return self.async_create_entry(title="", data={})
 
@@ -328,6 +340,20 @@ class TVSideViewOptionsFlow(config_entries.OptionsFlow):
                             CONF_IRCC_PORT, DEFAULT_IRCC_PORT
                         ),
                     ): int,
+                    vol.Required(
+                        CONF_IRCC_PROFILE,
+                        default=self._entry.data.get(
+                            CONF_IRCC_PROFILE, DEFAULT_IRCC_PROFILE
+                        ),
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": key, "label": label}
+                                for key, label in PROFILE_LABELS.items()
+                            ],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                 }
             ),
             errors=errors,

@@ -14,11 +14,13 @@ from .const import (
     CONF_APP_PORT,
     CONF_DMR_PORT,
     CONF_IRCC_PORT,
+    CONF_IRCC_PROFILE,
     CONF_MAC,
     CONF_PIN,
     DEFAULT_APP_PORT,
     DEFAULT_DMR_PORT,
     DEFAULT_IRCC_PORT,
+    DEFAULT_IRCC_PROFILE,
     DEFAULT_NAME,
     DOMAIN,
 )
@@ -77,6 +79,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     coordinator = SideViewDataUpdateCoordinator(hass, device)
+    coordinator.ircc_profile = entry.data.get(CONF_IRCC_PROFILE, DEFAULT_IRCC_PROFILE)
+    coordinator.device_name = name
     # Soft first refresh — offline must not block entity registration
     await coordinator.async_refresh()
 

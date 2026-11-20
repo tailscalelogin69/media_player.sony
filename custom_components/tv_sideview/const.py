@@ -9,17 +9,19 @@ CONF_DMR_PORT = "dmr_port"
 CONF_IRCC_PORT = "ircc_port"
 CONF_PIN = "pin"
 CONF_MAC = "mac"
+CONF_IRCC_PROFILE = "ircc_profile"
 
 DEFAULT_NAME = "SideView Device"
 DEFAULT_APP_PORT = 50202
 DEFAULT_DMR_PORT = 52323
 DEFAULT_IRCC_PORT = 50001
+DEFAULT_IRCC_PROFILE = "auto"
 
 # Poll more often so on/off and volume feel responsive in the UI
 SCAN_INTERVAL = timedelta(seconds=15)
 
-# Fallback / activity-list names. Live devices also expose their own list via
-# getRemoteCommandList (preferred when available).
+# Fallback / activity-list names. A live getRemoteCommandList still wins.
+# BDV / BDP / DVD codes behind these names come from the SideView app.
 COMMANDS = [
     # Navigation / system
     "Confirm",
@@ -85,7 +87,8 @@ COMMANDS = [
     "EPG",
     "ChannelUp",
     "ChannelDown",
-    # BDV home theatre (BDV-E4100 and similar — from getRemoteCommandList)
+    # BDV home theatre — names the SideView app itself sends
+    "Function",
     "BDV:Function",
     "BDV:Bluetooth",
     "BDV:SoundMode",

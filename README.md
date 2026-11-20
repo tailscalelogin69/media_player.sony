@@ -7,7 +7,7 @@ Home Assistant integration for **older Sony TVs, Blu-ray players, and home theat
 | **Domain** | `tv_sideview` |
 | **UI name** | Video & TV SideView (Legacy API) |
 | **Folder** | `custom_components/tv_sideview/` |
-| **Version** | 1.2.0 |
+| **Version** | 1.3.0 |
 
 Search **Add integration** for **SideView**, **Video**, or **TV SideView**.  
 Does **not** replace or hide official Sony Bravia, PlayStation Network, Songpal, or other integrations.
@@ -136,7 +136,9 @@ data:
 <details>
 <summary><strong>Remote command reference</strong> (click to expand)</summary>
 
-Commands come from the device `getRemoteCommandList` when available; the table below is the integration fallback / BDV-E4100 dump.
+Commands come from the device `getRemoteCommandList` when the unit is awake. `BDV:Function` and `Function` are the same key, and a live list entry wins over the fallback. If that list is missing, 1.3.0 uses the key tables inside the official SideView app (decompiled from the Android package): **BDV3G** for home theatre, **BD1** for Blu-ray, **DVD4** for DVD / net players, and **TV1** for volume, channel and power. Pick the map under **Configure → Remote map**, or leave **auto**. A SOAP fault 803 is treated as success, the way the app does.
+
+The APK only hardcodes the buttons on the SideView remote (transport, d-pad, volume, `Function`, `BDV:SoundModeUp`). Names such as `BDV:Bluetooth`, `BDV:Sleep` and `BDV:MusicEQ` are sent only when the player itself published them.
 
 ### Navigation & system
 
@@ -222,9 +224,9 @@ There is **no** direct IRCC for “jump to AUDIO (RCA)”. Use `BDV:Function` wi
 
 | Action | Behaviour |
 |--------|-----------|
-| **Turn off** | IRCC Power |
-| **Turn on** | WOL (MAC) + Power IRCC, then poll |
-| **State** | DMR probe + library (poll ~15s); **off** when unreachable |
+| **Turn off** | IRCC Power (SideView framing) |
+| **Turn on** | Wake-on-LAN burst, then wait until IRCC or DMR answers (up to **120s**, the SideView app's timeout for everything except a Blu-ray recorder) and send Power |
+| **State** | DMR or IRCC port probe + library (poll ~15s); **off** when unreachable |
 | **HA restart with device off** | Setup succeeds; entities stay **off** until the unit is reachable |
 
 ---
@@ -250,7 +252,8 @@ data:
 | Cannot connect at pair | Same subnet? On? Media Remote registration? |
 | Failed setup on restart (old versions) | Use ≥1.2.0 — offline setup is supported |
 | Can turn off but not on | Set MAC under Configure; network standby |
-| FUNCTION does nothing | Use **`BDV:Function`**, not `Function` or `Audio` |
+| FUNCTION does nothing | `Function` and `BDV:Function` both send the BDV3G function key. Set Remote map to **bdv** if the device never returned a command list |
+| Wrong buttons on a home theatre | Configure → Remote map → **bdv**. The old library fallback was a Blu-ray (BD1) map only |
 | Dump full command list | Authenticated GET to `getRemoteCommandList` with stored PIN + name as `X-CERS-DEVICE-ID` |
 
 ```yaml

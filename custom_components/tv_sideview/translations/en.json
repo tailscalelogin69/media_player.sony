@@ -42,12 +42,13 @@
     "step": {
       "init": {
         "title": "SideView options",
-        "description": "Update MAC (for power on) and ports without re-pairing.",
+        "description": "Update MAC (for power on), ports, and which SideView remote map to use when the device does not publish getRemoteCommandList. Auto guesses from the name (BDV, BDP, DVD, TV).",
         "data": {
           "mac": "MAC address (AA:BB:CC:DD:EE:FF)",
           "app_port": "App port",
           "dmr_port": "DMR port",
-          "ircc_port": "IRCC port"
+          "ircc_port": "IRCC port",
+          "ircc_profile": "Remote map"
         }
       }
     },

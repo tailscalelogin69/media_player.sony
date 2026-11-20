@@ -12,7 +12,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from sonyapilib.device import SonyDevice
 
-from .const import DOMAIN, SCAN_INTERVAL
+from .const import DEFAULT_IRCC_PROFILE, DOMAIN, SCAN_INTERVAL
+from .ircc import guess_profile
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +42,15 @@ class SideViewDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.device = device
         self._device_ready = bool(device.commands or device.actions)
+        self.ircc_profile = DEFAULT_IRCC_PROFILE
+        self.device_name: str | None = None
+
+    def resolved_profile(self) -> str:
+        """Concrete SideView remote map (bdv / bdp / dvd / tv)."""
+        profile = self.ircc_profile or DEFAULT_IRCC_PROFILE
+        if profile != "auto":
+            return profile
+        return guess_profile(self.device_name, self.device.nickname)
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
@@ -74,7 +84,19 @@ class SideViewDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ):
                 return True
         except OSError as err:
-            _LOGGER.debug("TCP probe failed: %s", err)
+            _LOGGER.debug("DMR TCP probe failed: %s", err)
+
+        # SideView also talks to the IRCC port. Some units answer there
+        # while DMR is still down (or the other way around).
+        ircc_port = getattr(self.device, "ircc_port", None)
+        if ircc_port:
+            try:
+                with socket.create_connection(
+                    (self.device.host, ircc_port), timeout=2
+                ):
+                    return True
+            except OSError as err:
+                _LOGGER.debug("IRCC TCP probe failed: %s", err)
 
         return False
 
